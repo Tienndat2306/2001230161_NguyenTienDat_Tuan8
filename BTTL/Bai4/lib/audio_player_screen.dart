@@ -2,46 +2,57 @@ import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 class AudioPlayerHome extends StatefulWidget {
-  const AudioPlayerHome({super.key});
+  final int initialIndex;
+  const AudioPlayerHome({super.key, required this.initialIndex});
 
   @override
   _AudioPlayerHomeState createState() => _AudioPlayerHomeState();
 }
 
 class _AudioPlayerHomeState extends State<AudioPlayerHome> {
-  // Bây giờ Flutter đã hiểu AudioPlayer nhờ dòng import trên
   late AudioPlayer _audioPlayer;
-  int _currentSongIndex = 0;
+  late int _currentSongIndex;
   bool _isPlaying = false;
 
-  final List<String> _songs = [
-    'audios/sample1.mp3',
-    'audios/sample2.mp3',
-    'audios/sample3.mp3',
-  ];
-
-  final List<String> _songTitles = [
-    'Vocabulary Lesson 1',
-    'Grammar Part 2',
-    'Pronunciation 3'
-  ];
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
 
   @override
   void initState() {
     super.initState();
+    _currentSongIndex = widget.initialIndex;
     _audioPlayer = AudioPlayer();
+
+    // Đảm bảo phát nhạc ngay khi vào
+    _playSong();
+
+    // 1. Lắng nghe trạng thái Playing/Paused
+    _audioPlayer.onPlayerStateChanged.listen((state) {
+      if (mounted) setState(() => _isPlaying = state == PlayerState.playing);
+    });
+
+    // 2. Lắng nghe tổng thời lượng bài nhạc
+    _audioPlayer.onDurationChanged.listen((newDuration) {
+      if (mounted) setState(() => _duration = newDuration);
+    });
+
+    // 3. Lắng nghe vị trí bài nhạc đang phát
+    _audioPlayer.onPositionChanged.listen((newPosition) {
+      if (mounted) setState(() => _position = newPosition);
+    });
 
     _audioPlayer.onPlayerStateChanged.listen((PlayerState state) {
       if (mounted) {
-        setState(() {
-          _isPlaying = state == PlayerState.playing;
-        });
+        setState(() => _isPlaying = state == PlayerState.playing);
       }
     });
+  }
 
-    _audioPlayer.onPlayerComplete.listen((event) {
-      _nextSong();
-    });
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, "0");
+    String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
+    String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
+    return "$twoDigitMinutes:$twoDigitSeconds";
   }
 
   @override
@@ -52,7 +63,8 @@ class _AudioPlayerHomeState extends State<AudioPlayerHome> {
 
   Future<void> _playSong() async {
     try {
-      await _audioPlayer.play(AssetSource(_songs[_currentSongIndex]));
+      // Lấy đường dẫn từ Model Lesson
+      await _audioPlayer.play(AssetSource(amingoLessons[_currentSongIndex].audioPath));
     } catch (e) {
       debugPrint("Lỗi phát audio: $e");
     }
@@ -63,14 +75,14 @@ class _AudioPlayerHomeState extends State<AudioPlayerHome> {
 
   void _nextSong() {
     setState(() {
-      _currentSongIndex = (_currentSongIndex + 1) % _songs.length;
+      _currentSongIndex = (_currentSongIndex + 1) % amingoLessons.length;
     });
     _playSong();
   }
 
   void _previousSong() {
     setState(() {
-      _currentSongIndex = (_currentSongIndex - 1 + _songs.length) % _songs.length;
+      _currentSongIndex = (_currentSongIndex - 1 + amingoLessons.length) % amingoLessons.length;
     });
     _playSong();
   }
@@ -79,69 +91,65 @@ class _AudioPlayerHomeState extends State<AudioPlayerHome> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFFFFBEB),
-      appBar: AppBar(
-        title: const Text('Amingo Audio Player', style: TextStyle(fontWeight: FontWeight.bold)),
-        centerTitle: true,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: Center(
+      appBar: AppBar(title: const Text('Amingo Player'), backgroundColor: Colors.transparent),
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 250,
-              height: 250,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.orange.shade100,
-                border: Border.all(color: const Color(0xFFFDBC13), width: 4),
-                boxShadow: const [
-                  BoxShadow(color: Colors.black12, blurRadius: 15, offset: Offset(0, 10))
+            CircleAvatar(
+              radius: 100,
+              backgroundColor: Colors.orange.shade100,
+              child: const Icon(Icons.music_note, size: 80, color: Colors.orange),
+            ),
+            const SizedBox(height: 30),
+            Text(
+              amingoLessons[_currentSongIndex].title,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+
+            const SizedBox(height: 30),
+
+            // --- THANH HIỂN THỊ THỜI GIAN (SLIDER) ---
+            Slider(
+              min: 0,
+              max: _duration.inSeconds.toDouble(),
+              value: _position.inSeconds.toDouble(),
+              activeColor: const Color(0xFFFDBC13),
+              inactiveColor: Colors.orange.shade100,
+              onChanged: (value) async {
+                final position = Duration(seconds: value.toInt());
+                await _audioPlayer.seek(position); // Tua nhạc đến đoạn được chọn
+              },
+            ),
+
+            // Hiển thị số phút/giây bên dưới thanh Slider
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 15),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(_formatDuration(_position)), // Thời gian hiện tại
+                  Text(_formatDuration(_duration)), // Tổng thời gian
                 ],
               ),
-              child: Icon(Icons.music_note_rounded, size: 100, color: Colors.orange.shade800),
             ),
-            const SizedBox(height: 40),
-            Text(
-              _songTitles[_currentSongIndex],
-              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Color(0xFF5D4037)),
-            ),
-            const Text('Amingo Learning App', style: TextStyle(color: Colors.grey, letterSpacing: 1.2)),
-            const SizedBox(height: 40),
+
+            const SizedBox(height: 20),
+
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                IconButton(
-                  icon: const Icon(Icons.skip_previous_rounded, size: 50),
-                  onPressed: _previousSong,
-                  color: const Color(0xFF775600),
+                IconButton(icon: const Icon(Icons.skip_previous, size: 40), onPressed: _previousSong),
+                const SizedBox(width: 20),
+                FloatingActionButton(
+                  backgroundColor: const Color(0xFFFDBC13),
+                  onPressed: () => _isPlaying ? _pauseSong() : _playSong(),
+                  child: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, size: 35),
                 ),
                 const SizedBox(width: 20),
-                GestureDetector(
-                  onTap: () => _isPlaying ? _pauseSong() : _playSong(),
-                  child: CircleAvatar(
-                    radius: 35,
-                    backgroundColor: const Color(0xFFFDBC13),
-                    child: Icon(
-                      _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                      size: 45,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 20),
-                IconButton(
-                  icon: const Icon(Icons.skip_next_rounded, size: 50),
-                  onPressed: _nextSong,
-                  color: const Color(0xFF775600),
-                ),
+                IconButton(icon: const Icon(Icons.skip_next, size: 40), onPressed: _nextSong),
               ],
-            ),
-            const SizedBox(height: 30),
-            IconButton(
-              icon: const Icon(Icons.stop_circle_outlined, size: 30, color: Colors.grey),
-              onPressed: _stopSong,
             ),
           ],
         ),
@@ -149,3 +157,51 @@ class _AudioPlayerHomeState extends State<AudioPlayerHome> {
     );
   }
 }
+
+
+class AudioListScreen extends StatelessWidget {
+  const AudioListScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFFFFBEB),
+      appBar: AppBar(
+        title: const Text('Lessons'),
+        backgroundColor: const Color(0xFFFDBC13),
+      ),
+      body: ListView.builder(
+        itemCount: amingoLessons.length,
+        itemBuilder: (context, index) {
+          return ListTile(
+            leading: const Icon(Icons.audiotrack, color: Colors.orange),
+            title: Text(amingoLessons[index].title),
+
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => AudioPlayerHome(initialIndex: index),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+
+class Lesson {
+  final String title;
+  final String audioPath;
+
+  Lesson({required this.title, required this.audioPath});
+}
+
+final List<Lesson> amingoLessons = [
+  Lesson(title: 'Lesson 1: Vocabulary', audioPath: 'audios/audio1.mp3'),
+  Lesson(title: 'Lesson 2: First Snowfall', audioPath: 'audios/first_snowfall.mp3'),
+  Lesson(title: 'Lesson 3: Pronunciation', audioPath: 'audios/sample3.mp3'),
+];

@@ -18,8 +18,7 @@ class SimpleAudioPlayer extends StatelessWidget {
         primarySwatch: Colors.orange,
         useMaterial3: true,
       ),
-      // Gọi màn hình từ file audioplayers.dart
-      home: const AudioPlayerHome(),
+      home: const AudioListScreen(),
     );
   }
 }
